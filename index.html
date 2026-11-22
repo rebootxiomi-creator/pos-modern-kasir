@@ -12,6 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Firebase SDK CDN (Compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script>
         tailwind.config = {
@@ -47,23 +48,19 @@
                     <i class="fa-solid fa-cash-register"></i>
                 </div>
                 <h2 class="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Login Kasir Pintar</h2>
-                <p class="text-xs text-slate-500">Silakan masuk sesuai hak akses akun Anda</p>
+                <p class="text-xs text-slate-500">Silakan masuk menggunakan email & sandi akun Anda</p>
             </div>
 
             <form onsubmit="handleLogin(event)" class="space-y-4">
                 <div>
-                    <label class="block text-[11px] md:text-xs font-semibold text-slate-600 uppercase mb-1">Pilih Role / Pengguna</label>
-                    <select id="login-role" class="w-full px-3.5 py-2.5 md:px-4 md:py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs md:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-                        <option value="admin">Admin</option>
-                        <option value="cashier1">Kasir 1</option>
-                        <option value="cashier2">Kasir 2</option>
-                    </select>
+                    <label class="block text-[11px] md:text-xs font-semibold text-slate-600 uppercase mb-1">Email Akun</label>
+                    <input type="email" id="login-email" required placeholder="admin@abs.com" class="w-full px-3.5 py-2.5 md:px-4 md:py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs md:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 </div>
                 <div>
                     <label class="block text-[11px] md:text-xs font-semibold text-slate-600 uppercase mb-1">Password</label>
                     <input type="password" id="login-password" required placeholder="••••••••" class="w-full px-3.5 py-2.5 md:px-4 md:py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs md:text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 </div>
-                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 md:py-3 rounded-xl transition shadow-lg shadow-indigo-600/20 text-xs md:text-sm">
+                <button type="submit" id="btn-login-submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 md:py-3 rounded-xl transition shadow-lg shadow-indigo-600/20 text-xs md:text-sm">
                     Masuk ke Sistem
                 </button>
             </form>
@@ -150,7 +147,7 @@
                         <h2 class="text-base md:text-xl font-bold text-slate-900 tracking-tight">Dashboard Ringkasan</h2>
                         <p class="text-xs text-slate-500">Analisis cepat performa toko dan statistik penjualan hari ini.</p>
                     </div>
-                    <button onclick="loadDashboardData()" class="self-start sm:self-auto bg-white border border-slate-200 hover:bg-slate-100 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 shadow-sm transition">
+                    <button onclick="loadFromCloudOrLocal(true)" class="self-start sm:self-auto bg-white border border-slate-200 hover:bg-slate-100 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-600 shadow-sm transition">
                         <i class="fa-solid fa-rotate mr-1"></i> Muat Ulang
                     </button>
                 </div>
@@ -837,9 +834,15 @@
             productPrefix: "PRD-"
         };
 
-        let products = [];
+        const ACCOUNT_ROLES = {
+            "admin@abs.com": { role: "admin", name: "Admin Utama" },
+            "kasir1@abs.com": { role: "cashier1", name: "Kasir 1" },
+            "kasir2@abs.com": { role: "cashier2", name: "Kasir 2" }
+        };
+
+        let products = [...DEFAULT_PRODUCTS];
         let transactions = [];
-        let settings = {};
+        let settings = { ...DEFAULT_SETTINGS };
         let cart = [];
         let activeCategory = 'Semua';
         let paymentMethod = 'cash';
@@ -855,13 +858,18 @@
         let bluetoothCharacteristic = null;
 
         let firebaseApp = null;
+        let auth = null;
         let db = null;
         let isFirebaseConnected = false;
+        let isAuthInitialized = false;
 
         window.onload = function() {
-            initFirebaseFromStorage();
-            checkLoginState();
             initClock();
+            initFirebaseFromStorage();
+            if (!isFirebaseConnected) {
+                loadLocalFallback();
+                document.getElementById('login-modal').classList.remove('hidden');
+            }
         };
 
         function generateUniqueProductId() {
@@ -924,18 +932,22 @@
         function initFirebaseFromStorage() {
             const savedConfig = localStorage.getItem('pos_firebase_config');
             if (savedConfig) {
-                const config = JSON.parse(savedConfig);
-                if (document.getElementById('fb-api-key')) {
-                    document.getElementById('fb-api-key').value = config.apiKey || '';
-                    document.getElementById('fb-auth-domain').value = config.authDomain || '';
-                    document.getElementById('fb-project-id').value = config.projectId || '';
-                    document.getElementById('fb-storage-bucket').value = config.storageBucket || '';
-                    document.getElementById('fb-messaging-sender-id').value = config.messagingSenderId || '';
-                    document.getElementById('fb-app-id').value = config.appId || '';
-                }
+                try {
+                    const config = JSON.parse(savedConfig);
+                    if (document.getElementById('fb-api-key')) {
+                        document.getElementById('fb-api-key').value = config.apiKey || '';
+                        document.getElementById('fb-auth-domain').value = config.authDomain || '';
+                        document.getElementById('fb-project-id').value = config.projectId || '';
+                        document.getElementById('fb-storage-bucket').value = config.storageBucket || '';
+                        document.getElementById('fb-messaging-sender-id').value = config.messagingSenderId || '';
+                        document.getElementById('fb-app-id').value = config.appId || '';
+                    }
 
-                if (config.apiKey && config.projectId) {
-                    connectFirebase(config);
+                    if (config.apiKey && config.projectId) {
+                        connectFirebase(config);
+                    }
+                } catch (e) {
+                    console.error("Config Firebase lokal tidak valid:", e);
                 }
             }
         }
@@ -947,15 +959,47 @@
                 } else {
                     firebaseApp = firebase.app();
                 }
+                auth = firebase.auth();
                 db = firebase.firestore();
                 isFirebaseConnected = true;
                 updateFirebaseStatusUI(true, config.projectId);
-                loadFromCloudOrLocal();
+                setupAuthStateListener();
+                return true;
             } catch (e) {
                 console.error(e);
                 isFirebaseConnected = false;
                 updateFirebaseStatusUI(false);
+                showToast(`Error inisialisasi Firebase: ${e.message}`, true);
+                return false;
             }
+        }
+
+        function setupAuthStateListener() {
+            if (!auth || isAuthInitialized) return;
+            isAuthInitialized = true;
+
+            auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    const mapped = mapRoleFromEmail(user.email);
+                    currentUser = {
+                        uid: user.uid,
+                        email: user.email,
+                        role: mapped.role,
+                        name: mapped.name
+                    };
+                    localStorage.setItem('pos_current_user', JSON.stringify(currentUser));
+                    document.getElementById('login-modal').classList.add('hidden');
+                    applyRolePermissions();
+                    await loadFromCloudOrLocal(true);
+                    switchTab(currentUser.role === 'admin' ? 'dashboard' : 'pos');
+                    if (currentUser.role === 'admin') loadDashboardData();
+                } else {
+                    currentUser = null;
+                    localStorage.removeItem('pos_current_user');
+                    loadLocalFallback();
+                    document.getElementById('login-modal').classList.remove('hidden');
+                }
+            });
         }
 
         function testAndSaveFirebaseConfig() {
@@ -974,9 +1018,12 @@
             }
 
             localStorage.setItem('pos_firebase_config', JSON.stringify(config));
-            connectFirebase(config);
-            if (isFirebaseConnected) {
-                showToast('Berhasil terhubung ke Firebase Firestore!');
+            const connected = connectFirebase(config);
+            if (connected) {
+                showToast('Berhasil terhubung ke Firebase!');
+                if (auth && auth.currentUser) {
+                    loadFromCloudOrLocal(true);
+                }
             } else {
                 showToast('Gagal terhubung ke Firebase. Periksa kembali konfigurasi Anda.', true);
             }
@@ -988,7 +1035,7 @@
             const icon = document.getElementById('firebase-icon');
             if (isConnected) {
                 if (statusText) statusText.innerText = `Firebase: ${projectName}`;
-                if (desc) desc.innerText = `Status: Terhubung ke Firestore (${projectName})`;
+                if (desc) desc.innerText = `Status: Terhubung ke Firebase (${projectName})`;
                 if (icon) icon.className = "fa-solid fa-fire text-emerald-400 mr-1.5";
             } else {
                 if (statusText) statusText.innerText = "Firebase Disconnected";
@@ -997,19 +1044,30 @@
             }
         }
 
+        function loadLocalFallback() {
+            const savedProducts = localStorage.getItem('pos_cloud_products');
+            const savedTrx = localStorage.getItem('pos_cloud_transactions');
+            const savedSettings = localStorage.getItem('pos_cloud_settings');
+
+            products = savedProducts ? JSON.parse(savedProducts) : [...DEFAULT_PRODUCTS];
+            transactions = savedTrx ? JSON.parse(savedTrx) : [];
+            settings = savedSettings ? { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) } : { ...DEFAULT_SETTINGS };
+            applySettingsToUI();
+        }
+
         async function saveToCloudAndLocal() {
             localStorage.setItem('pos_cloud_products', JSON.stringify(products));
             localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
             localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
 
-            if (isFirebaseConnected && db) {
+            if (isFirebaseConnected && db && auth && auth.currentUser) {
                 try {
                     await db.collection('pos_store').doc('main_data').set({
                         products: products,
                         transactions: transactions,
                         settings: settings,
                         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    });
+                    }, { merge: true });
                     const statusText = document.getElementById('cloud-status-text');
                     if (statusText) {
                         statusText.innerText = "Firebase Synced";
@@ -1022,38 +1080,54 @@
                     }
                 } catch (e) {
                     console.error("Gagal sync ke Firebase:", e);
+                    showToast(`Gagal sync ke Firestore: ${e.code || e.message}`, true);
                 }
             }
         }
 
-        async function loadFromCloudOrLocal() {
+        async function loadFromCloudOrLocal(forceFromFirebase = false) {
             let loadedFromFB = false;
-            if (isFirebaseConnected && db) {
+
+            if (isFirebaseConnected && db && auth && auth.currentUser) {
                 try {
                     const doc = await db.collection('pos_store').doc('main_data').get();
                     if (doc.exists) {
-                        const data = doc.data();
-                        products = data.products || DEFAULT_PRODUCTS;
-                        transactions = data.transactions || [];
-                        settings = data.settings || DEFAULT_SETTINGS;
+                        const data = doc.data() || {};
+                        products = Array.isArray(data.products) ? data.products : [...DEFAULT_PRODUCTS];
+                        transactions = Array.isArray(data.transactions) ? data.transactions : [];
+                        settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
                         loadedFromFB = true;
+
+                        localStorage.setItem('pos_cloud_products', JSON.stringify(products));
+                        localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
+                        localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
+                    } else if (forceFromFirebase) {
+                        showToast('Dokumen pos_store/main_data belum ada di Firestore.', true);
                     }
                 } catch (e) {
                     console.error("Gagal mengambil data dari Firebase:", e);
+                    showToast(`Gagal ambil data Firebase: ${e.code || e.message}`, true);
                 }
+            } else if (forceFromFirebase && (!auth || !auth.currentUser)) {
+                showToast('Silakan login akun Firebase terlebih dahulu.', true);
             }
 
             if (!loadedFromFB) {
-                const savedProducts = localStorage.getItem('pos_cloud_products');
-                const savedTrx = localStorage.getItem('pos_cloud_transactions');
-                const savedSettings = localStorage.getItem('pos_cloud_settings');
-
-                products = savedProducts ? JSON.parse(savedProducts) : DEFAULT_PRODUCTS;
-                transactions = savedTrx ? JSON.parse(savedTrx) : [];
-                settings = savedSettings ? JSON.parse(savedSettings) : DEFAULT_SETTINGS;
+                loadLocalFallback();
             }
 
             applySettingsToUI();
+            refreshActiveView();
+        }
+
+        function refreshActiveView() {
+            if (!currentUser) return;
+            if (currentUser.role === 'admin') {
+                loadDashboardData();
+                renderProductTable();
+                renderReportsView();
+            }
+            renderPOSCatalog();
         }
 
         async function connectBluetoothPrinter() {
@@ -1173,60 +1247,70 @@
             }
         }
 
-        function checkLoginState() {
-            const session = localStorage.getItem('pos_current_user');
-            if (session) {
-                currentUser = JSON.parse(session);
-                document.getElementById('login-modal').classList.add('hidden');
-                loadFromCloudOrLocal();
-                applyRolePermissions();
-                switchTab(currentUser.role === 'admin' ? 'dashboard' : 'pos');
-                if(currentUser.role === 'admin') loadDashboardData();
-            } else {
-                document.getElementById('login-modal').classList.remove('hidden');
+        function mapRoleFromEmail(email = '') {
+            const normalized = String(email).toLowerCase().trim();
+            if (ACCOUNT_ROLES[normalized]) {
+                return ACCOUNT_ROLES[normalized];
             }
+            if (normalized.includes('kasir2') || normalized.includes('cashier2')) {
+                return { role: 'cashier2', name: 'Kasir 2' };
+            }
+            if (normalized.includes('kasir1') || normalized.includes('kasir') || normalized.includes('cashier1') || normalized.includes('cashier')) {
+                return { role: 'cashier1', name: 'Kasir 1' };
+            }
+            return { role: 'admin', name: 'Admin Utama' };
         }
 
-        function handleLogin(event) {
+        async function handleLogin(event) {
             event.preventDefault();
-            const role = document.getElementById('login-role').value;
-            const pass = document.getElementById('login-password').value;
-
-            if (role === 'admin') {
-                if (pass === 'admin123' || pass.length >= 4) {
-                    currentUser = { role: 'admin', name: 'Admin Utama' };
-                } else {
-                    alert('Password salah untuk Admin (default: admin123)');
-                    return;
-                }
-            } else if (role === 'cashier1') {
-                if (pass === 'kasir123' || pass.length >= 4) {
-                    currentUser = { role: 'cashier1', name: 'Kasir 1' };
-                } else {
-                    alert('Password salah untuk Kasir 1 (default: kasir123)');
-                    return;
-                }
-            } else if (role === 'cashier2') {
-                if (pass === 'kasir123' || pass.length >= 4) {
-                    currentUser = { role: 'cashier2', name: 'Kasir 2' };
-                } else {
-                    alert('Password salah untuk Kasir 2 (default: kasir123)');
-                    return;
-                }
+            if (!isFirebaseConnected || !auth) {
+                showToast('Firebase belum terhubung! Cek pengaturan Firebase terlebih dahulu.', true);
+                return;
             }
 
-            localStorage.setItem('pos_current_user', JSON.stringify(currentUser));
-            document.getElementById('login-modal').classList.add('hidden');
-            loadFromCloudOrLocal();
-            applyRolePermissions();
-            
-            const targetTab = currentUser.role === 'admin' ? 'dashboard' : 'pos';
-            switchTab(targetTab);
-            if(currentUser.role === 'admin') loadDashboardData();
-            showToast(`Berhasil login sebagai ${currentUser.name}`);
+            const email = document.getElementById('login-email').value.trim();
+            const pass = document.getElementById('login-password').value;
+            const submitBtn = document.getElementById('btn-login-submit');
+
+            submitBtn.disabled = true;
+            submitBtn.innerText = 'Memproses...';
+
+            try {
+                const cred = await auth.signInWithEmailAndPassword(email, pass);
+                const mapped = mapRoleFromEmail(cred.user.email);
+                currentUser = {
+                    uid: cred.user.uid,
+                    email: cred.user.email,
+                    role: mapped.role,
+                    name: mapped.name
+                };
+
+                localStorage.setItem('pos_current_user', JSON.stringify(currentUser));
+                document.getElementById('login-modal').classList.add('hidden');
+                applyRolePermissions();
+                await loadFromCloudOrLocal(true);
+
+                const targetTab = currentUser.role === 'admin' ? 'dashboard' : 'pos';
+                switchTab(targetTab);
+                if (currentUser.role === 'admin') loadDashboardData();
+                showToast(`Berhasil login sebagai ${currentUser.name}`);
+            } catch (error) {
+                console.error(error);
+                showToast(`Login gagal: ${error.message}`, true);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Masuk ke Sistem';
+            }
         }
 
-        function logout() {
+        async function logout() {
+            try {
+                if (isFirebaseConnected && auth) {
+                    await auth.signOut();
+                }
+            } catch (e) {
+                console.error("Gagal sign out dari Firebase Auth:", e);
+            }
             localStorage.removeItem('pos_current_user');
             currentUser = null;
             document.getElementById('login-password').value = '';
@@ -1395,7 +1479,6 @@
             }
         }
 
-        // Fungsi Switch View POS khusus HP (Pilih Produk vs Keranjang)
         function switchPosMobileView(view) {
             const catalogPanel = document.getElementById('pos-catalog-panel');
             const cartPanel = document.getElementById('pos-cart-panel');
@@ -1410,7 +1493,7 @@
             } else {
                 catalogPanel.classList.add('hidden');
                 cartPanel.classList.remove('hidden');
-                cartPanel.classList.remove('lg:flex'); // Pastikan flex menyala di HP saat dipilih
+                cartPanel.classList.remove('lg:flex');
                 cartPanel.classList.add('flex');
                 btnCart.className = "flex-1 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white shadow-sm transition";
                 btnCatalog.className = "flex-1 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition";
@@ -1495,63 +1578,7 @@
 
         function filterPOSProducts() {
             currentPOSPage = 1;
-            const grid = document.getElementById('pos-product-grid');
-            const searchQuery = document.getElementById('pos-search').value.toLowerCase().trim();
-            const filtered = products.filter(p => {
-                const matchCat = activeCategory === 'Semua' || p.category === activeCategory;
-                const matchSearch = p.name.toLowerCase().includes(searchQuery) || 
-                                    p.category.toLowerCase().includes(searchQuery) || 
-                                    p.id.toLowerCase().includes(searchQuery);
-
-                if (searchQuery !== '') {
-                    return matchSearch;
-                }
-                return matchCat;
-            });
-
-            grid.innerHTML = '';
-            const paginationEl = document.getElementById('pos-pagination');
-
-            if (filtered.length === 0) {
-                grid.innerHTML = `<div class="col-span-full text-center py-16 text-slate-400"><i class="fa-solid fa-box-open text-3xl mb-2"></i><p class="text-sm">Produk tidak ditemukan</p></div>`;
-                if (paginationEl) paginationEl.innerHTML = '';
-                renderCart();
-                return;
-            }
-
-            const totalPages = Math.ceil(filtered.length / itemsPerPage);
-            if (currentPOSPage > totalPages) currentPOSPage = totalPages || 1;
-            const start = (currentPOSPage - 1) * itemsPerPage;
-            const paginatedItems = filtered.slice(start, start + itemsPerPage);
-
-            paginatedItems.forEach(p => {
-                const isOut = p.stock <= 0;
-                const prefix = settings.productPrefix || 'PRD-';
-                grid.innerHTML += `
-                    <div onclick="${isOut ? '' : `addToCart('${p.id}')`}" class="bg-white border border-slate-200 rounded-2xl p-2.5 md:p-3 flex flex-col justify-between shadow-sm hover:shadow-md transition cursor-pointer relative group ${isOut ? 'opacity-60 cursor-not-allowed bg-slate-50' : 'hover:border-indigo-300'}">
-                        ${isOut ? '<span class="absolute top-2 right-2 bg-rose-100 text-rose-600 text-[10px] font-bold px-2 py-0.5 rounded-full">Habis</span>' : ''}
-                        <div>
-                            <div class="flex justify-between items-center">
-                                <span class="text-[9px] md:text-[10px] font-semibold text-indigo-600 uppercase tracking-wider">${p.category}</span>
-                                <span class="text-[9px] md:text-[10px] text-slate-400 font-mono">${prefix}${p.id}</span>
-                            </div>
-                            <h4 class="font-bold text-slate-800 text-xs md:text-sm mt-1 line-clamp-2">${p.name}</h4>
-                        </div>
-                        <div class="mt-2.5 md:mt-3 flex items-end justify-between">
-                            <div>
-                                <p class="text-[10px] md:text-[11px] text-slate-400">Stok: ${p.stock}</p>
-                                <p class="font-bold text-slate-900 text-xs md:text-sm mt-0.5">${formatRupiah(p.sellPrice)}</p>
-                            </div>
-                            <div class="w-7 h-7 md:w-8 md:h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition">
-                                <i class="fa-solid fa-plus text-[10px] md:text-xs"></i>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-
-            renderPOSPagination(totalPages);
-            renderCart();
+            renderPOSCatalog();
         }
 
         function renderPOSPagination(totalPages) {
