@@ -116,7 +116,9 @@ function loadLocalFallback() {
     const savedProducts = localStorage.getItem('pos_cloud_products');
     const savedTrx = localStorage.getItem('pos_cloud_transactions');
     const savedSettings = localStorage.getItem('pos_cloud_settings');
-
+    const savedAccounts = localStorage.getItem('pos_cloud_accounts');
+    const savedTransfers = localStorage.getItem('pos_cloud_transfers');
+    
     products = savedProducts ? JSON.parse(savedProducts) : [...DEFAULT_PRODUCTS];
     transactions = savedTrx ? JSON.parse(savedTrx) : [];
     settings = savedSettings ? { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) } : { ...DEFAULT_SETTINGS };
