@@ -292,6 +292,36 @@ function renderCart() {
     if (checkoutBtn) checkoutBtn.disabled = items.length === 0;
 }
 
+function buildQrisPayload(trxTotal, storeName) {
+    const cleanStore = String(storeName || 'TOKO POS').replace(/[^A-Za-z0-9 ]/g, '').slice(0, 25);
+    const amt = Math.max(0, Math.round(Number(trxTotal) || 0));
+    return `QRIS|${cleanStore}|AMOUNT:${amt}|TS:${Date.now()}`;
+}
+
+function renderQrisBox(total) {
+    const box = document.getElementById('qris-dynamic-render');
+    const info = document.getElementById('qris-payment-info');
+    const checkbox = document.getElementById('qris-paid-confirm');
+    if (checkbox) checkbox.checked = false;
+
+    const payload = buildQrisPayload(total, typeof settings !== 'undefined' ? settings.storeName : 'POS');
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(payload)}`;
+
+    if (box) {
+        box.innerHTML = `
+            <img src="${qrUrl}" alt="QRIS Pembayaran" class="w-36 h-36 mx-auto rounded-lg"
+                onerror="this.style.display='none'; document.getElementById('qris-fallback-code').classList.remove('hidden');">
+            <div id="qris-fallback-code" class="hidden w-36 h-36 bg-slate-900 text-white rounded-xl flex flex-col items-center justify-center p-2 mx-auto">
+                <i class="fa-solid fa-qrcode text-4xl mb-1"></i>
+                <span class="text-[10px] font-mono break-all text-center">${escapeHtml(payload)}</span>
+            </div>
+        `;
+    }
+    if (info) {
+        info.innerText = `Scan QR untuk membayar ${formatRupiah(total)}`;
+    }
+}
+
 function openPaymentModal() {
     if (!Array.isArray(cart) || cart.length === 0) return;
     isCheckingOut = false;
@@ -318,20 +348,40 @@ function selectPaymentMethod(method) {
     paymentMethod = method;
     const cashBtn = document.getElementById('pm-cash-btn');
     const qrisBtn = document.getElementById('pm-qris-btn');
+    const tfBtn = document.getElementById('pm-transfer-btn');
+
     const cashSec = document.getElementById('cash-payment-section');
     const qrisSec = document.getElementById('qris-payment-section');
+    const tfSec = document.getElementById('transfer-payment-section');
 
-    if (method === 'cash') {
-        if (cashBtn) cashBtn.className = "py-2.5 px-3 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 text-xs md:text-sm font-semibold flex items-center justify-center space-x-2 transition";
-        if (qrisBtn) qrisBtn.className = "py-2.5 px-3 rounded-xl border-2 border-slate-200 bg-white text-slate-600 text-xs md:text-sm font-semibold flex items-center justify-center space-x-2 transition";
-        if (cashSec) cashSec.classList.remove('hidden');
-        if (qrisSec) qrisSec.classList.add('hidden');
-    } else {
-        if (qrisBtn) qrisBtn.className = "py-2.5 px-3 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 text-xs md:text-sm font-semibold flex items-center justify-center space-x-2 transition";
-        if (cashBtn) cashBtn.className = "py-2.5 px-3 rounded-xl border-2 border-slate-200 bg-white text-slate-600 text-xs md:text-sm font-semibold flex items-center justify-center space-x-2 transition";
-        if (cashSec) cashSec.classList.add('hidden');
-        if (qrisSec) qrisSec.classList.remove('hidden');
+    const activeCls = "py-2.5 px-2 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center justify-center space-x-1.5 transition";
+    const idleCls = "py-2.5 px-2 rounded-xl border-2 border-slate-200 bg-white text-slate-600 text-xs font-semibold flex items-center justify-center space-x-1.5 transition";
+
+    if (cashBtn) cashBtn.className = method === 'cash' ? activeCls : idleCls;
+    if (qrisBtn) qrisBtn.className = method === 'qris' ? activeCls : idleCls;
+    if (tfBtn) tfBtn.className = method === 'transfer' ? activeCls : idleCls;
+
+    if (cashSec) cashSec.classList.toggle('hidden', method !== 'cash');
+    if (qrisSec) qrisSec.classList.toggle('hidden', method !== 'qris');
+    if (tfSec) tfSec.classList.toggle('hidden', method !== 'transfer');
+
+    const { total } = getCartTotals();
+    if (method === 'qris') {
+        renderQrisBox(total);
+    } else if (method === 'transfer') {
+        const bankAcc = Array.isArray(accounts)
+            ? accounts.find(a => a && (a.id === 'ACC-BANK' || a.type === 'bank'))
+            : null;
+        const targetEl = document.getElementById('transfer-bank-target');
+        const amtEl = document.getElementById('transfer-exact-amount');
+        if (targetEl) {
+            targetEl.innerText = bankAcc
+                ? `Rekening tujuan: ${bankAcc.name} (${bankAcc.accountNumber || '-'})`
+                : 'Rekening tujuan: Rekening Bank Utama';
+        }
+        if (amtEl) amtEl.innerText = `Nominal: ${formatRupiah(total)}`;
     }
+
     calculateChange();
 }
 
@@ -361,6 +411,13 @@ function calculateChange() {
 
     if (paymentMethod === 'qris') {
         if (changeEl) changeEl.innerText = formatRupiah(0);
+        const isPaid = Boolean(document.getElementById('qris-paid-confirm')?.checked);
+        if (confirmBtn) confirmBtn.disabled = total > 0 && !isPaid;
+        return;
+    }
+
+    if (paymentMethod === 'transfer') {
+        if (changeEl) changeEl.innerText = formatRupiah(0);
         if (confirmBtn) confirmBtn.disabled = false;
         return;
     }
@@ -388,6 +445,11 @@ async function processCheckoutFinal() {
     if (paymentMethod === 'cash' && cashGiven < total) {
         showToast('Nominal tunai kurang dari total tagihan!', true);
         calculateChange();
+        return;
+    }
+
+    if (paymentMethod === 'qris' && total > 0 && !document.getElementById('qris-paid-confirm')?.checked) {
+        showToast('Centang konfirmasi pembayaran QRIS terlebih dahulu!', true);
         return;
     }
 
@@ -448,10 +510,13 @@ async function processCheckoutFinal() {
 
             state.transactions.push(createdTrx);
 
-            const targetAccId = paymentMethod === 'qris' ? 'ACC-QRIS' : 'ACC-CASH';
-            const acc = state.accounts.find(a => a && a.id === targetAccId);
-            if (acc) {
-                acc.balance = (Number(acc.balance) || 0) + total;
+            const targetAcc = paymentMethod === 'transfer'
+                ? state.accounts.find(a => a && (a.id === 'ACC-BANK' || a.type === 'bank'))
+                : paymentMethod === 'qris'
+                    ? state.accounts.find(a => a && a.id === 'ACC-QRIS')
+                    : state.accounts.find(a => a && a.id === 'ACC-CASH');
+            if (targetAcc) {
+                targetAcc.balance = (Number(targetAcc.balance) || 0) + total;
             }
         });
 
