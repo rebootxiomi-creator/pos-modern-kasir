@@ -1,6 +1,9 @@
 // Global Application State
 let products = [...DEFAULT_PRODUCTS];
 let transactions = [];
+let accounts = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+let cashTransfers = [];
+let expenses = [];
 let settings = { ...DEFAULT_SETTINGS };
 let cart = [];
 let activeCategory = 'Semua';
@@ -26,5 +29,3 @@ let db = null;
 let isFirebaseConnected = false;
 let isAuthInitialized = false;
 let firestoreUnsubscribe = null;
-let accounts = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
-let cashTransfers = [];
