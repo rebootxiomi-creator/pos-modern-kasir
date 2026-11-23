@@ -1,51 +1,58 @@
-function loadDashboardData() {
-    const todayStr = new Date().toLocaleDateString('id-ID');
-    let todaySales = 0;
-    let todayTrxCount = 0;
+function renderDashboard() {
+    const today = new Date();
+    const trxList = Array.isArray(transactions) ? transactions : [];
+    const prodList = Array.isArray(products) ? products : [];
 
-    transactions.forEach(trx => {
-        if (trx.status === 'VOID') return; // Exclude voided transactions
-        const trxDate = new Date(trx.timestamp).toLocaleDateString('id-ID');
-        if (trxDate === todayStr) {
-            todaySales += trx.total;
-            todayTrxCount++;
-        }
+    const validTrx = trxList.filter(t => t && t.status !== 'VOID');
+    const todayValidTrx = validTrx.filter(t => {
+        const dt = new Date(t.timestamp);
+        return !Number.isNaN(dt.getTime()) && isSameDay(dt, today);
     });
 
-    const lowStockCount = products.filter(p => p.stock <= 5).length;
+    const todaySales = todayValidTrx.reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+    const lowStockCount = prodList.filter(p => p && (Number(p.stock) || 0) <= 5).length;
 
-    document.getElementById('dash-today-sales').innerText = formatRupiah(todaySales);
-    document.getElementById('dash-today-trx').innerText = todayTrxCount;
-    document.getElementById('dash-total-products').innerText = products.length;
-    document.getElementById('dash-lowstock-count').innerText = lowStockCount;
+    const elSales = document.getElementById('dash-today-sales');
+    const elTrx = document.getElementById('dash-today-trx');
+    const elProds = document.getElementById('dash-total-products');
+    const elLow = document.getElementById('dash-lowstock-count');
+    const tbody = document.getElementById('dash-recent-trx-list');
 
-    const recentBody = document.getElementById('dash-recent-trx-list');
-    recentBody.innerHTML = '';
-    const recentTrx = [...transactions].reverse().slice(0, 5);
+    if (elSales) elSales.innerText = formatRupiah(todaySales);
+    if (elTrx) elTrx.innerText = String(todayValidTrx.length);
+    if (elProds) elProds.innerText = String(prodList.length);
+    if (elLow) elLow.innerText = String(lowStockCount);
 
-    if (recentTrx.length === 0) {
-        recentBody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-slate-400">Belum ada transaksi tercatat</td></tr>`;
-    } else {
-        recentTrx.forEach(trx => {
-            const isVoid = trx.status === 'VOID';
-            recentBody.innerHTML += `
-                <tr class="hover:bg-slate-50 transition ${isVoid ? 'opacity-60 bg-rose-50/30' : ''}">
-                    <td class="p-2.5 md:p-3 font-semibold text-slate-700">${escapeHtml(trx.id)}</td>
-                    <td class="p-2.5 md:p-3 text-slate-600">${escapeHtml(trx.customerName || 'Umum')}</td>
-                    <td class="p-2.5 md:p-3 text-indigo-600 font-medium text-xs">${escapeHtml(trx.cashierName || 'Admin Utama')}</td>
-                    <td class="p-2.5 md:p-3 text-xs text-slate-500">${new Date(trx.timestamp).toLocaleTimeString('id-ID')}</td>
-                    <td class="p-2.5 md:p-3 text-center">
-                        ${isVoid
-                            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">VOID</span>'
-                            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">VALID</span>'
-                        }
-                    </td>
-                    <td class="p-2.5 md:p-3 text-right font-bold ${isVoid ? 'line-through text-slate-400' : 'text-slate-800'}">${formatRupiah(trx.total)}</td>
-                    <td class="p-2.5 md:p-3 text-center">
-                        <button onclick="viewReceipt('${escapeHtml(trx.id)}')" class="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg transition"><i class="fa-solid fa-receipt text-xs"></i></button>
-                    </td>
-                </tr>
-            `;
-        });
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const recent = [...trxList].reverse().slice(0, 10);
+    if (recent.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-slate-400">Belum ada transaksi tercatat</td></tr>`;
+        return;
     }
+
+    recent.forEach(trx => {
+        const isVoid = trx.status === 'VOID';
+        tbody.innerHTML += `
+            <tr class="hover:bg-slate-50 transition ${isVoid ? 'opacity-60 bg-rose-50/30' : ''}">
+                <td class="p-2.5 md:p-3 font-mono text-xs font-semibold text-slate-700">${escapeHtml(trx.id)}</td>
+                <td class="p-2.5 md:p-3 text-xs text-slate-700">${escapeHtml(trx.customerName || 'Umum')}</td>
+                <td class="p-2.5 md:p-3 text-xs text-slate-500">${escapeHtml(trx.cashier || '-')}</td>
+                <td class="p-2.5 md:p-3 text-xs text-slate-500">${new Date(trx.timestamp).toLocaleString('id-ID')}</td>
+                <td class="p-2.5 md:p-3 text-center">
+                    ${isVoid
+                        ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">VOID</span>'
+                        : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">VALID</span>'
+                    }
+                </td>
+                <td class="p-2.5 md:p-3 text-right font-bold ${isVoid ? 'line-through text-slate-400' : 'text-indigo-600'}">${formatRupiah(trx.total)}</td>
+                <td class="p-2.5 md:p-3 text-center">
+                    <button type="button" onclick="openReceiptById('${escapeHtml(trx.id)}')" class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold transition">
+                        Struk
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
 }
