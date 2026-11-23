@@ -1,3 +1,5 @@
+let isOpeningMainApp = false;
+
 function resolveUserRole(email) {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (typeof ACCOUNT_ROLES !== 'undefined' && ACCOUNT_ROLES[cleanEmail]) {
@@ -20,40 +22,61 @@ function resetLoginButton() {
 }
 
 async function openMainAppAfterAuth(userObj, isFromCloud = false) {
-    currentUser = userObj;
+    if (isOpeningMainApp) return;
+    isOpeningMainApp = true;
+
     try {
-        localStorage.setItem('pos_offline_session', JSON.stringify(currentUser));
-    } catch (e) {}
-
-    hideLoginModal();
-    if (typeof applyRolePermissions === 'function') {
-        applyRolePermissions();
-    }
-
-    if (isFromCloud && typeof loadFromCloudOrLocal === 'function') {
+        currentUser = userObj;
         try {
-            await loadFromCloudOrLocal(true);
-        } catch (e) {
-            console.warn('Cloud load fallback to local:', e);
-            if (typeof loadLocalFallback === 'function') loadLocalFallback();
-        }
-        if (typeof startRealtimeFirestoreListener === 'function') {
-            startRealtimeFirestoreListener();
-        }
-    } else if (typeof loadLocalFallback === 'function') {
-        loadLocalFallback();
-    }
+            localStorage.setItem('pos_offline_session', JSON.stringify(currentUser));
+        } catch (e) {}
 
-    const targetTab = (currentUser && currentUser.role === 'admin') ? 'dashboard' : 'pos';
-    if (typeof switchTab === 'function') {
-        switchTab(targetTab);
+        if (typeof hideLoginModal === 'function') {
+            hideLoginModal();
+        }
+        if (typeof applyRolePermissions === 'function') {
+            applyRolePermissions();
+        }
+
+        const targetTab = (currentUser && currentUser.role === 'admin') ? 'dashboard' : 'pos';
+        if (typeof switchTab === 'function') {
+            switchTab(targetTab);
+        }
+
+        if (isFromCloud && typeof loadFromCloudOrLocal === 'function') {
+            try {
+                await Promise.race([
+                    loadFromCloudOrLocal(true),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout memuat data cloud')), 5000))
+                ]);
+            } catch (e) {
+                console.warn('Cloud load fallback to local:', e);
+                if (typeof loadLocalFallback === 'function') loadLocalFallback();
+                if (typeof refreshActiveView === 'function') refreshActiveView();
+            }
+
+            if (typeof startRealtimeFirestoreListener === 'function') {
+                try {
+                    startRealtimeFirestoreListener();
+                } catch (e) {
+                    console.warn('Realtime listener warning:', e);
+                }
+            }
+        } else if (typeof loadLocalFallback === 'function') {
+            loadLocalFallback();
+            if (typeof refreshActiveView === 'function') refreshActiveView();
+        }
+    } finally {
+        isOpeningMainApp = false;
     }
 }
 
 function setupAuthStateListener() {
-    if (!auth || typeof auth.onAuthStateChanged !== 'function') return;
+    if (typeof auth === 'undefined' || !auth || typeof auth.onAuthStateChanged !== 'function') return;
     auth.onAuthStateChanged(async (user) => {
-        isAuthInitialized = true;
+        if (typeof isAuthInitialized !== 'undefined') {
+            window.isAuthInitialized = true;
+        }
         if (user) {
             const roleInfo = resolveUserRole(user.email);
             await openMainAppAfterAuth({
@@ -63,8 +86,14 @@ function setupAuthStateListener() {
                 name: roleInfo.name
             }, true);
         } else if (!currentUser) {
-            showLoginModal();
-            resetLoginButton();
+            let savedSession = null;
+            try {
+                savedSession = localStorage.getItem('pos_offline_session');
+            } catch (e) {}
+            if (!savedSession && typeof showLoginModal === 'function') {
+                showLoginModal();
+                resetLoginButton();
+            }
         }
     });
 }
@@ -107,7 +136,6 @@ async function handleLogin(event) {
             }, true);
             showToast(`Selamat datang, ${currentUser.name}!`);
         } else {
-            // Mode Lokal: langsung buka halaman utama tanpa nyangkut meski Firebase belum aktif
             const roleInfo = resolveUserRole(email);
             await openMainAppAfterAuth({
                 uid: 'local-' + Date.now(),
