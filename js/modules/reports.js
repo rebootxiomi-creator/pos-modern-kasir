@@ -88,9 +88,10 @@ function renderReportsView() {
                     <td class="p-2.5 md:p-3 text-center whitespace-nowrap space-x-1">
                         <button type="button" onclick="openReceiptById('${escapeHtml(trx.id)}')" class="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-semibold">Struk</button>
                         ${!isVoid
-                            ? `<button type="button" onclick="voidTransaction('${escapeHtml(trx.id)}')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold">VOID</button>`
+                            ? `<button type="button" onclick="voidTransaction('${escapeHtml(trx.id)}')" class="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg text-xs font-semibold">VOID</button>`
                             : ''
                         }
+                        <button type="button" onclick="deleteTransaction('${escapeHtml(trx.id)}')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold">Hapus</button>
                     </td>
                 </tr>
             `;
@@ -137,12 +138,62 @@ async function voidTransaction(trxId) {
         });
 
         renderReportsView();
-        renderDashboard();
-        renderProductTable();
-        filterPOSProducts();
+        if (typeof renderDashboard === 'function') renderDashboard();
+        if (typeof renderProductTable === 'function') renderProductTable();
+        if (typeof filterPOSProducts === 'function') filterPOSProducts();
+        if (typeof renderCashBankView === 'function') renderCashBankView();
         showToast(`Transaksi ${trxId} di-VOID, stok & saldo dikembalikan.`);
     } catch (err) {
         showToast(err.message || 'Gagal melakukan VOID transaksi!', true);
+    }
+}
+
+async function deleteTransaction(trxId) {
+    const target = transactions.find(t => t && t.id === trxId);
+    if (!target) return;
+
+    const statusLabel = target.status === 'VOID' ? 'VOID' : 'VALID';
+    const warnExtra = target.status !== 'VOID'
+        ? '\nCatatan: Karena statusnya masih VALID, stok produk dan saldo akun terkait akan dikembalikan.'
+        : '';
+
+    if (!confirm(`Hapus permanen riwayat transaksi ${trxId} (${statusLabel})?${warnExtra}`)) return;
+
+    try {
+        await mutateStoreDataAtomic((state) => {
+            const idx = state.transactions.findIndex(t => t && t.id === trxId);
+            if (idx === -1) throw new Error('Transaksi tidak ditemukan.');
+
+            const trx = state.transactions[idx];
+            if (trx.status !== 'VOID') {
+                for (const item of (trx.items || [])) {
+                    const prod = state.products.find(p => p && p.id === item.id);
+                    if (prod) {
+                        prod.stock = (Number(prod.stock) || 0) + (Number(item.qty) || 0);
+                    }
+                }
+
+                const acc = trx.paymentMethod === 'transfer'
+                    ? state.accounts.find(a => a && (a.id === 'ACC-BANK' || a.type === 'bank'))
+                    : trx.paymentMethod === 'qris'
+                        ? state.accounts.find(a => a && a.id === 'ACC-QRIS')
+                        : state.accounts.find(a => a && a.id === 'ACC-CASH');
+                if (acc) {
+                    acc.balance = Math.max(0, (Number(acc.balance) || 0) - (Number(trx.total) || 0));
+                }
+            }
+
+            state.transactions.splice(idx, 1);
+        });
+
+        renderReportsView();
+        if (typeof renderDashboard === 'function') renderDashboard();
+        if (typeof renderProductTable === 'function') renderProductTable();
+        if (typeof filterPOSProducts === 'function') filterPOSProducts();
+        if (typeof renderCashBankView === 'function') renderCashBankView();
+        showToast(`Riwayat transaksi ${trxId} berhasil dihapus.`);
+    } catch (err) {
+        showToast(err.message || 'Gagal menghapus transaksi!', true);
     }
 }
 
