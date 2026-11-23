@@ -54,10 +54,16 @@ function startRealtimeFirestoreListener() {
             const data = doc.data() || {};
             products = Array.isArray(data.products) ? data.products : [...DEFAULT_PRODUCTS];
             transactions = Array.isArray(data.transactions) ? data.transactions : [];
+            accounts = Array.isArray(data.accounts) ? data.accounts : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+            cashTransfers = Array.isArray(data.cashTransfers) ? data.cashTransfers : [];
+            expenses = Array.isArray(data.expenses) ? data.expenses : [];
             settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
 
             localStorage.setItem('pos_cloud_products', JSON.stringify(products));
             localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
+            localStorage.setItem('pos_cloud_accounts', JSON.stringify(accounts));
+            localStorage.setItem('pos_cloud_transfers', JSON.stringify(cashTransfers));
+            localStorage.setItem('pos_cloud_expenses', JSON.stringify(expenses));
             localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
 
             syncCartWithProducts();
@@ -115,12 +121,16 @@ function updateFirebaseStatusUI(isConnected, projectName = '') {
 function loadLocalFallback() {
     const savedProducts = localStorage.getItem('pos_cloud_products');
     const savedTrx = localStorage.getItem('pos_cloud_transactions');
-    const savedSettings = localStorage.getItem('pos_cloud_settings');
     const savedAccounts = localStorage.getItem('pos_cloud_accounts');
     const savedTransfers = localStorage.getItem('pos_cloud_transfers');
-    
+    const savedExpenses = localStorage.getItem('pos_cloud_expenses');
+    const savedSettings = localStorage.getItem('pos_cloud_settings');
+
     products = savedProducts ? JSON.parse(savedProducts) : [...DEFAULT_PRODUCTS];
     transactions = savedTrx ? JSON.parse(savedTrx) : [];
+    accounts = savedAccounts ? JSON.parse(savedAccounts) : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+    cashTransfers = savedTransfers ? JSON.parse(savedTransfers) : [];
+    expenses = savedExpenses ? JSON.parse(savedExpenses) : [];
     settings = savedSettings ? { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) } : { ...DEFAULT_SETTINGS };
     applySettingsToUI();
 }
@@ -136,6 +146,9 @@ async function mutateStoreDataAtomic(mutatorFn) {
                 const state = {
                     products: Array.isArray(data.products) ? JSON.parse(JSON.stringify(data.products)) : JSON.parse(JSON.stringify(products)),
                     transactions: Array.isArray(data.transactions) ? JSON.parse(JSON.stringify(data.transactions)) : JSON.parse(JSON.stringify(transactions)),
+                    accounts: Array.isArray(data.accounts) ? JSON.parse(JSON.stringify(data.accounts)) : JSON.parse(JSON.stringify(accounts)),
+                    cashTransfers: Array.isArray(data.cashTransfers) ? JSON.parse(JSON.stringify(data.cashTransfers)) : JSON.parse(JSON.stringify(cashTransfers)),
+                    expenses: Array.isArray(data.expenses) ? JSON.parse(JSON.stringify(data.expenses)) : JSON.parse(JSON.stringify(expenses)),
                     settings: { ...DEFAULT_SETTINGS, ...settings, ...(data.settings || {}) }
                 };
 
@@ -143,11 +156,17 @@ async function mutateStoreDataAtomic(mutatorFn) {
 
                 products = state.products;
                 transactions = state.transactions;
+                accounts = state.accounts;
+                cashTransfers = state.cashTransfers;
+                expenses = state.expenses;
                 settings = state.settings;
 
                 t.set(docRef, {
                     products: state.products,
                     transactions: state.transactions,
+                    accounts: state.accounts,
+                    cashTransfers: state.cashTransfers,
+                    expenses: state.expenses,
                     settings: state.settings,
                     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
@@ -155,6 +174,9 @@ async function mutateStoreDataAtomic(mutatorFn) {
 
             localStorage.setItem('pos_cloud_products', JSON.stringify(products));
             localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
+            localStorage.setItem('pos_cloud_accounts', JSON.stringify(accounts));
+            localStorage.setItem('pos_cloud_transfers', JSON.stringify(cashTransfers));
+            localStorage.setItem('pos_cloud_expenses', JSON.stringify(expenses));
             localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
 
             const statusText = document.getElementById('cloud-status-text');
@@ -172,14 +194,20 @@ async function mutateStoreDataAtomic(mutatorFn) {
             throw err;
         }
     } else {
-        const state = { products, transactions, settings };
+        const state = { products, transactions, accounts, cashTransfers, expenses, settings };
         mutatorFn(state);
         products = state.products;
         transactions = state.transactions;
+        accounts = state.accounts;
+        cashTransfers = state.cashTransfers;
+        expenses = state.expenses;
         settings = state.settings;
 
         localStorage.setItem('pos_cloud_products', JSON.stringify(products));
         localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
+        localStorage.setItem('pos_cloud_accounts', JSON.stringify(accounts));
+        localStorage.setItem('pos_cloud_transfers', JSON.stringify(cashTransfers));
+        localStorage.setItem('pos_cloud_expenses', JSON.stringify(expenses));
         localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
     }
 }
@@ -194,11 +222,17 @@ async function loadFromCloudOrLocal(forceFromFirebase = false) {
                 const data = doc.data() || {};
                 products = Array.isArray(data.products) ? data.products : [...DEFAULT_PRODUCTS];
                 transactions = Array.isArray(data.transactions) ? data.transactions : [];
+                accounts = Array.isArray(data.accounts) ? data.accounts : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+                cashTransfers = Array.isArray(data.cashTransfers) ? data.cashTransfers : [];
+                expenses = Array.isArray(data.expenses) ? data.expenses : [];
                 settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
                 loadedFromFB = true;
 
                 localStorage.setItem('pos_cloud_products', JSON.stringify(products));
                 localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
+                localStorage.setItem('pos_cloud_accounts', JSON.stringify(accounts));
+                localStorage.setItem('pos_cloud_transfers', JSON.stringify(cashTransfers));
+                localStorage.setItem('pos_cloud_expenses', JSON.stringify(expenses));
                 localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
             } else if (forceFromFirebase) {
                 showToast('Dokumen pos_store/main_data belum ada di Firestore.', true);
