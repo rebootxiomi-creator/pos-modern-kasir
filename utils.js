@@ -1,51 +1,56 @@
-// XSS-safe HTML escaping helper
-function escapeHtml(value) {
-    if (value === null || value === undefined) return '';
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+function formatRupiah(amount) {
+    const num = Number(amount) || 0;
+    return 'Rp ' + Math.round(num).toLocaleString('id-ID');
 }
 
-function formatRupiah(num) {
-    const safeNum = Number.isFinite(num) ? num : 0;
-    const formatted = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(safeNum);
-    return `Rp ${formatted}`;
+function escapeHtml(text) {
+    if (text === null || text === undefined) return '';
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
-function generateUniqueProductId() {
-    let newId;
-    let isDuplicate = true;
-    let safetyLimit = 0;
-
-    while (isDuplicate && safetyLimit < 100000) {
-        newId = Math.floor(10000 + Math.random() * 90000).toString();
-        isDuplicate = products.some(p => p.id === newId);
-        safetyLimit++;
+function formatProductCode(id) {
+    const cleanId = String(id || '').trim();
+    const prefix = (typeof settings !== 'undefined' && settings && settings.productPrefix) ? String(settings.productPrefix).trim() : 'PRD-';
+    if (!prefix) return cleanId;
+    if (cleanId.toUpperCase().startsWith(prefix.toUpperCase())) {
+        return cleanId;
     }
-
-    if (isDuplicate) {
-        newId = Date.now().toString().slice(-5);
-    }
-    return newId;
+    return `${prefix}${cleanId}`;
 }
 
-function generateUniqueTransactionId() {
-    let trxId;
-    let isDuplicate = true;
-    let counter = 0;
+function isSameDay(dateA, dateB) {
+    return dateA.getFullYear() === dateB.getFullYear() &&
+           dateA.getMonth() === dateB.getMonth() &&
+           dateA.getDate() === dateB.getDate();
+}
 
-    while (isDuplicate && counter < 100000) {
-        const randomCode = Math.floor(10000 + Math.random() * 90000).toString();
-        trxId = `TRX-${randomCode}`;
-        isDuplicate = transactions.some(t => t.id === trxId);
-        counter++;
+function showToast(message, isError = false) {
+    const toast = document.getElementById('toast-notification');
+    const msgEl = document.getElementById('toast-message');
+    const iconEl = document.getElementById('toast-icon');
+    if (!toast || !msgEl) {
+        console.log(isError ? '[ERROR]' : '[INFO]', message);
+        return;
     }
 
-    if (isDuplicate) {
-        trxId = `TRX-${Date.now().toString().slice(-5)}`;
+    msgEl.innerText = message;
+    if (iconEl) {
+        iconEl.className = isError
+            ? 'fa-solid fa-circle-exclamation text-rose-400 text-base md:text-lg'
+            : 'fa-solid fa-circle-check text-emerald-400 text-base md:text-lg';
     }
-    return trxId;
+
+    if (typeof toastTimer !== 'undefined' && toastTimer) clearTimeout(toastTimer);
+    toast.classList.remove('translate-y-20', 'opacity-0');
+    toast.classList.add('translate-y-0', 'opacity-100');
+
+    toastTimer = setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+    }, 3000);
 }
