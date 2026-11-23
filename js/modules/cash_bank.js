@@ -1,7 +1,28 @@
+function computeNetProfitAfterExpenses() {
+    const trxList = Array.isArray(transactions) ? transactions : [];
+    const expList = Array.isArray(expenses) ? expenses : [];
+
+    const totalProfit = trxList
+        .filter(t => t && t.status !== 'VOID')
+        .reduce((sum, t) => {
+            if (typeof computeTransactionProfit === 'function') {
+                return sum + computeTransactionProfit(t);
+            }
+            return sum + (Number(t.profit) || 0);
+        }, 0);
+
+    const totalExpenses = expList
+        .filter(e => e && e.status !== 'VOID')
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    return totalProfit - totalExpenses;
+}
+
 function renderCashBankView() {
     const grid = document.getElementById('cash-accounts-grid');
     const transferBody = document.getElementById('cash-transfer-table');
     const totalLiquidityEl = document.getElementById('cash-total-balance');
+    const netProfitEl = document.getElementById('cash-net-profit-after-exp');
     if (!grid) return;
 
     const accList = Array.isArray(accounts) ? accounts : [];
@@ -9,7 +30,9 @@ function renderCashBankView() {
     grid.innerHTML = '';
 
     accList.forEach(acc => {
-        totalBalance += (Number(acc.balance) || 0);
+        if (['cash', 'bank', 'ewallet'].includes(acc.type)) {
+            totalBalance += (Number(acc.balance) || 0);
+        }
         const badgeColor = acc.type === 'bank'
             ? 'bg-blue-50 text-blue-600 border-blue-200'
             : acc.type === 'ewallet'
@@ -54,6 +77,13 @@ function renderCashBankView() {
     });
 
     if (totalLiquidityEl) totalLiquidityEl.innerText = formatRupiah(totalBalance);
+    if (netProfitEl) {
+        const netProfitAfterExp = computeNetProfitAfterExpenses();
+        netProfitEl.innerText = formatRupiah(netProfitAfterExp);
+        netProfitEl.className = netProfitAfterExp < 0
+            ? 'text-lg md:text-xl font-bold text-rose-700'
+            : 'text-lg md:text-xl font-bold text-emerald-700';
+    }
 
     const fromSelect = document.getElementById('tf-from-account');
     const toSelect = document.getElementById('tf-to-account');
@@ -68,7 +98,7 @@ function renderCashBankView() {
         transferBody.innerHTML = '';
         const revTransfers = [...(Array.isArray(cashTransfers) ? cashTransfers : [])].reverse();
         if (revTransfers.length === 0) {
-            transferBody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Belum ada riwayat transfer antar-akun</td></tr>`;
+            transferBody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-slate-400">Belum ada riwayat transfer antar-akun</td></tr>`;
         } else {
             revTransfers.forEach(tf => {
                 transferBody.innerHTML += `
@@ -78,10 +108,32 @@ function renderCashBankView() {
                         <td class="p-3 text-xs font-medium text-slate-700">${escapeHtml(tf.fromName)} → ${escapeHtml(tf.toName)}</td>
                         <td class="p-3 text-xs text-slate-500">${escapeHtml(tf.note || '-')}</td>
                         <td class="p-3 text-right font-bold text-indigo-600">${formatRupiah(tf.amount)}</td>
+                        <td class="p-3 text-center">
+                            <button type="button" onclick="deleteAccountTransfer('${escapeHtml(tf.id)}')" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-semibold transition">
+                                Hapus
+                            </button>
+                        </td>
                     </tr>
                 `;
             });
         }
+    }
+}
+
+async function deleteAccountTransfer(transferId) {
+    const tf = (Array.isArray(cashTransfers) ? cashTransfers : []).find(item => item && item.id === transferId);
+    if (!tf) return;
+    if (!confirm(`Hapus riwayat transfer ${transferId}?`)) return;
+
+    try {
+        await mutateStoreDataAtomic((state) => {
+            state.cashTransfers = (Array.isArray(state.cashTransfers) ? state.cashTransfers : [])
+                .filter(item => item && item.id !== transferId);
+        });
+        renderCashBankView();
+        showToast(`Riwayat transfer ${transferId} berhasil dihapus.`);
+    } catch (err) {
+        showToast(err.message || 'Gagal menghapus riwayat transfer!', true);
     }
 }
 
