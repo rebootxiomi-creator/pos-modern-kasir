@@ -392,7 +392,7 @@
                         <h3 class="font-bold text-slate-800 text-xs md:text-sm">Riwayat Transaksi Detail & Rincian Profit</h3>
                     </div>
                     <div class="overflow-x-auto overflow-y-auto flex-1">
-                        <table class="w-full text-left text-xs md:text-sm min-w-[760px]">
+                        <table class="w-full text-left text-xs md:text-sm min-w-[780px]">
                             <thead class="sticky top-0 bg-slate-50 z-10 border-b border-slate-200 shadow-sm">
                                 <tr class="text-slate-500 text-[10px] md:text-xs uppercase font-semibold">
                                     <th class="p-2.5 md:p-3">ID Transaksi</th>
@@ -513,11 +513,17 @@
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
                     <div>
                         <h2 class="text-base md:text-xl font-bold text-slate-900 tracking-tight">Kas & Rekening Bank</h2>
-                        <p class="text-xs text-slate-500">Pantau saldo kasir, rekening bank, QRIS, dan transfer antar-akun</p>
+                        <p class="text-xs text-slate-500">Pantau saldo kasir, rekening bank, QRIS, transfer antar-akun, dan profit bersih</p>
                     </div>
-                    <div class="bg-indigo-50 border border-indigo-100 px-4 py-2.5 rounded-xl text-right">
-                        <p class="text-[10px] md:text-[11px] font-semibold text-indigo-600 uppercase">Total Likuiditas Kas & Bank</p>
-                        <p id="cash-total-balance" class="text-lg md:text-xl font-bold text-indigo-900">Rp 0</p>
+                    <div class="flex flex-wrap sm:flex-nowrap gap-2.5">
+                        <div class="bg-indigo-50 border border-indigo-100 px-4 py-2.5 rounded-xl text-right">
+                            <p class="text-[10px] md:text-[11px] font-semibold text-indigo-600 uppercase">Total Likuiditas Kas & Bank</p>
+                            <p id="cash-total-balance" class="text-lg md:text-xl font-bold text-indigo-900">Rp 0</p>
+                        </div>
+                        <div class="bg-emerald-50 border border-emerald-100 px-4 py-2.5 rounded-xl text-right">
+                            <p class="text-[10px] md:text-[11px] font-semibold text-emerald-600 uppercase">Laba Bersih (Setelah Biaya)</p>
+                            <p id="cash-net-profit-after-exp" class="text-lg md:text-xl font-bold text-emerald-700">Rp 0</p>
+                        </div>
                     </div>
                 </div>
 
@@ -562,7 +568,7 @@
                         <h3 class="font-bold text-slate-800 text-xs md:text-sm">Riwayat Transfer Antar-Akun</h3>
                     </div>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse min-w-[600px]">
+                        <table class="w-full text-left border-collapse min-w-[650px]">
                             <thead>
                                 <tr class="bg-slate-50 text-slate-500 text-[10px] md:text-xs uppercase border-b border-slate-200">
                                     <th class="p-3">ID</th>
@@ -570,6 +576,7 @@
                                     <th class="p-3">Alur Transfer</th>
                                     <th class="p-3">Catatan</th>
                                     <th class="p-3 text-right">Nominal</th>
+                                    <th class="p-3 text-center">Aksi</th>
                                 </tr>
                             </thead>
                             <tbody id="cash-transfer-table" class="divide-y divide-slate-100 text-xs md:text-sm"></tbody>
@@ -606,7 +613,7 @@
                         <h3 class="font-bold text-slate-800 text-xs md:text-sm">Riwayat Biaya Operasional</h3>
                     </div>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse min-w-[700px]">
+                        <table class="w-full text-left border-collapse min-w-[720px]">
                             <thead>
                                 <tr class="bg-slate-50 text-slate-500 text-[10px] md:text-xs uppercase border-b border-slate-200">
                                     <th class="p-3">ID</th>
