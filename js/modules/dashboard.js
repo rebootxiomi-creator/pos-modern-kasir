@@ -1,3 +1,14 @@
+function parseTrxDate(rawTs) {
+    if (!rawTs) return null;
+    if (rawTs instanceof Date) return Number.isNaN(rawTs.getTime()) ? null : rawTs;
+    if (typeof rawTs === 'object' && typeof rawTs.seconds === 'number') {
+        const d = new Date(rawTs.seconds * 1000);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(rawTs);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
 function renderDashboard() {
     const today = new Date();
     const trxList = Array.isArray(transactions) ? transactions : [];
@@ -5,8 +16,8 @@ function renderDashboard() {
 
     const validTrx = trxList.filter(t => t && t.status !== 'VOID');
     const todayValidTrx = validTrx.filter(t => {
-        const dt = new Date(t.timestamp);
-        return !Number.isNaN(dt.getTime()) && isSameDay(dt, today);
+        const dt = parseTrxDate(t.timestamp);
+        return dt && isSameDay(dt, today);
     });
 
     const todaySales = todayValidTrx.reduce((sum, t) => sum + (Number(t.total) || 0), 0);
@@ -34,12 +45,15 @@ function renderDashboard() {
 
     recent.forEach(trx => {
         const isVoid = trx.status === 'VOID';
+        const dt = parseTrxDate(trx.timestamp);
+        const timeText = dt ? dt.toLocaleString('id-ID') : '-';
+
         tbody.innerHTML += `
             <tr class="hover:bg-slate-50 transition ${isVoid ? 'opacity-60 bg-rose-50/30' : ''}">
                 <td class="p-2.5 md:p-3 font-mono text-xs font-semibold text-slate-700">${escapeHtml(trx.id)}</td>
                 <td class="p-2.5 md:p-3 text-xs text-slate-700">${escapeHtml(trx.customerName || 'Umum')}</td>
                 <td class="p-2.5 md:p-3 text-xs text-slate-500">${escapeHtml(trx.cashier || '-')}</td>
-                <td class="p-2.5 md:p-3 text-xs text-slate-500">${new Date(trx.timestamp).toLocaleString('id-ID')}</td>
+                <td class="p-2.5 md:p-3 text-xs text-slate-500">${escapeHtml(timeText)}</td>
                 <td class="p-2.5 md:p-3 text-center">
                     ${isVoid
                         ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">VOID</span>'
