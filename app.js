@@ -1,21 +1,15 @@
-window.onload = function() {
-    initClock();
-    initFirebaseFromStorage();
-    if (!isFirebaseConnected) {
-        loadLocalFallback();
-        const savedOfflineUser = localStorage.getItem('pos_offline_user');
-        if (savedOfflineUser) {
-            try {
-                currentUser = JSON.parse(savedOfflineUser);
-                document.getElementById('login-modal').classList.add('hidden');
-                applyRolePermissions();
-                applySettingsToUI();
-                switchTab(currentUser.role === 'admin' ? 'dashboard' : 'pos');
-            } catch (e) {
-                document.getElementById('login-modal').classList.remove('hidden');
-            }
-        } else {
-            document.getElementById('login-modal').classList.remove('hidden');
+document.addEventListener('DOMContentLoaded', () => {
+    if (typeof startRealtimeClock === 'function') startRealtimeClock();
+    if (typeof applySettingsToUI === 'function') applySettingsToUI();
+
+    showLoginModal();
+    if (typeof resetLoginButton === 'function') resetLoginButton();
+
+    if (typeof initFirebaseFromStorage === 'function') {
+        try {
+            initFirebaseFromStorage();
+        } catch (e) {
+            console.error('Init Firebase warning:', e);
         }
     }
-};
+});
