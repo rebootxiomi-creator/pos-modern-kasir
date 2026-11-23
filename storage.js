@@ -1,5 +1,22 @@
+function safeLocalStorageGet(key) {
+    try {
+        return localStorage.getItem(key);
+    } catch (e) {
+        console.warn(`Gagal membaca localStorage (${key}):`, e);
+        return null;
+    }
+}
+
+function safeLocalStorageSet(key, value) {
+    try {
+        localStorage.setItem(key, value);
+    } catch (e) {
+        console.warn(`Gagal menyimpan ke localStorage (${key}):`, e);
+    }
+}
+
 function initFirebaseFromStorage() {
-    const savedConfig = localStorage.getItem('pos_firebase_config');
+    const savedConfig = safeLocalStorageGet('pos_firebase_config');
     if (savedConfig) {
         try {
             const config = JSON.parse(savedConfig);
@@ -23,6 +40,12 @@ function initFirebaseFromStorage() {
 
 function connectFirebase(config) {
     try {
+        if (typeof firebase === 'undefined') {
+            isFirebaseConnected = false;
+            updateFirebaseStatusUI(false);
+            return false;
+        }
+
         if (!firebase.apps.length) {
             firebaseApp = firebase.initializeApp(config);
         } else {
@@ -32,21 +55,26 @@ function connectFirebase(config) {
         db = firebase.firestore();
         isFirebaseConnected = true;
         updateFirebaseStatusUI(true, config.projectId);
-        setupAuthStateListener();
+        if (typeof setupAuthStateListener === 'function') {
+            setupAuthStateListener();
+        }
         return true;
     } catch (e) {
         console.error(e);
         isFirebaseConnected = false;
         updateFirebaseStatusUI(false);
-        showToast(`Error inisialisasi Firebase: ${e.message}`, true);
+        if (typeof showToast === 'function') {
+            showToast(`Error inisialisasi Firebase: ${e.message}`, true);
+        }
         return false;
     }
 }
 
 function startRealtimeFirestoreListener() {
     if (!isFirebaseConnected || !db || !auth || !auth.currentUser) return;
-    if (firestoreUnsubscribe) {
-        firestoreUnsubscribe();
+    if (typeof firestoreUnsubscribe === 'function') {
+        try { firestoreUnsubscribe(); } catch (e) {}
+        firestoreUnsubscribe = null;
     }
 
     firestoreUnsubscribe = db.collection('pos_store').doc('main_data').onSnapshot((doc) => {
@@ -59,19 +87,19 @@ function startRealtimeFirestoreListener() {
             expenses = Array.isArray(data.expenses) ? data.expenses : [];
             settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
 
-            localStorage.setItem('pos_cloud_products', JSON.stringify(products));
-            localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
-            localStorage.setItem('pos_cloud_accounts', JSON.stringify(accounts));
-            localStorage.setItem('pos_cloud_transfers', JSON.stringify(cashTransfers));
-            localStorage.setItem('pos_cloud_expenses', JSON.stringify(expenses));
-            localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
+            safeLocalStorageSet('pos_cloud_products', JSON.stringify(products));
+            safeLocalStorageSet('pos_cloud_transactions', JSON.stringify(transactions));
+            safeLocalStorageSet('pos_cloud_accounts', JSON.stringify(accounts));
+            safeLocalStorageSet('pos_cloud_transfers', JSON.stringify(cashTransfers));
+            safeLocalStorageSet('pos_cloud_expenses', JSON.stringify(expenses));
+            safeLocalStorageSet('pos_cloud_settings', JSON.stringify(settings));
 
-            syncCartWithProducts();
-            applySettingsToUI();
-            refreshActiveView();
+            if (typeof syncCartWithProducts === 'function') syncCartWithProducts();
+            if (typeof applySettingsToUI === 'function') applySettingsToUI();
+            if (typeof refreshActiveView === 'function') refreshActiveView();
         }
     }, (error) => {
-        console.error("Realtime snapshot error:", error);
+        console.warn("Realtime snapshot error:", error);
     });
 }
 
@@ -90,7 +118,7 @@ function testAndSaveFirebaseConfig() {
         return;
     }
 
-    localStorage.setItem('pos_firebase_config', JSON.stringify(config));
+    safeLocalStorageSet('pos_firebase_config', JSON.stringify(config));
     const connected = connectFirebase(config);
     if (connected) {
         showToast('Berhasil terhubung ke Firebase!');
@@ -119,20 +147,33 @@ function updateFirebaseStatusUI(isConnected, projectName = '') {
 }
 
 function loadLocalFallback() {
-    const savedProducts = localStorage.getItem('pos_cloud_products');
-    const savedTrx = localStorage.getItem('pos_cloud_transactions');
-    const savedAccounts = localStorage.getItem('pos_cloud_accounts');
-    const savedTransfers = localStorage.getItem('pos_cloud_transfers');
-    const savedExpenses = localStorage.getItem('pos_cloud_expenses');
-    const savedSettings = localStorage.getItem('pos_cloud_settings');
+    const savedProducts = safeLocalStorageGet('pos_cloud_products');
+    const savedTrx = safeLocalStorageGet('pos_cloud_transactions');
+    const savedAccounts = safeLocalStorageGet('pos_cloud_accounts');
+    const savedTransfers = safeLocalStorageGet('pos_cloud_transfers');
+    const savedExpenses = safeLocalStorageGet('pos_cloud_expenses');
+    const savedSettings = safeLocalStorageGet('pos_cloud_settings');
 
-    products = savedProducts ? JSON.parse(savedProducts) : [...DEFAULT_PRODUCTS];
-    transactions = savedTrx ? JSON.parse(savedTrx) : [];
-    accounts = savedAccounts ? JSON.parse(savedAccounts) : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
-    cashTransfers = savedTransfers ? JSON.parse(savedTransfers) : [];
-    expenses = savedExpenses ? JSON.parse(savedExpenses) : [];
-    settings = savedSettings ? { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) } : { ...DEFAULT_SETTINGS };
-    applySettingsToUI();
+    try {
+        products = savedProducts ? JSON.parse(savedProducts) : [...DEFAULT_PRODUCTS];
+        transactions = savedTrx ? JSON.parse(savedTrx) : [];
+        accounts = savedAccounts ? JSON.parse(savedAccounts) : JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+        cashTransfers = savedTransfers ? JSON.parse(savedTransfers) : [];
+        expenses = savedExpenses ? JSON.parse(savedExpenses) : [];
+        settings = savedSettings ? { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) } : { ...DEFAULT_SETTINGS };
+    } catch (e) {
+        console.warn("Gagal parse data lokal, kembali ke default:", e);
+        products = [...DEFAULT_PRODUCTS];
+        transactions = [];
+        accounts = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+        cashTransfers = [];
+        expenses = [];
+        settings = { ...DEFAULT_SETTINGS };
+    }
+
+    if (typeof applySettingsToUI === 'function') {
+        applySettingsToUI();
+    }
 }
 
 // Atomic Firestore transaction mutator to eliminate multi-cashier race conditions
@@ -172,19 +213,19 @@ async function mutateStoreDataAtomic(mutatorFn) {
                 }, { merge: true });
             });
 
-            localStorage.setItem('pos_cloud_products', JSON.stringify(products));
-            localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
-            localStorage.setItem('pos_cloud_accounts', JSON.stringify(accounts));
-            localStorage.setItem('pos_cloud_transfers', JSON.stringify(cashTransfers));
-            localStorage.setItem('pos_cloud_expenses', JSON.stringify(expenses));
-            localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
+            safeLocalStorageSet('pos_cloud_products', JSON.stringify(products));
+            safeLocalStorageSet('pos_cloud_transactions', JSON.stringify(transactions));
+            safeLocalStorageSet('pos_cloud_accounts', JSON.stringify(accounts));
+            safeLocalStorageSet('pos_cloud_transfers', JSON.stringify(cashTransfers));
+            safeLocalStorageSet('pos_cloud_expenses', JSON.stringify(expenses));
+            safeLocalStorageSet('pos_cloud_settings', JSON.stringify(settings));
 
             const statusText = document.getElementById('cloud-status-text');
             if (statusText) {
                 statusText.innerText = "Firebase Synced";
                 setTimeout(() => {
                     if (isFirebaseConnected) {
-                        const cfg = JSON.parse(localStorage.getItem('pos_firebase_config') || '{}');
+                        const cfg = JSON.parse(safeLocalStorageGet('pos_firebase_config') || '{}');
                         statusText.innerText = `Firebase: ${cfg.projectId || 'Connected'}`;
                     }
                 }, 1500);
@@ -203,12 +244,12 @@ async function mutateStoreDataAtomic(mutatorFn) {
         expenses = state.expenses;
         settings = state.settings;
 
-        localStorage.setItem('pos_cloud_products', JSON.stringify(products));
-        localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
-        localStorage.setItem('pos_cloud_accounts', JSON.stringify(accounts));
-        localStorage.setItem('pos_cloud_transfers', JSON.stringify(cashTransfers));
-        localStorage.setItem('pos_cloud_expenses', JSON.stringify(expenses));
-        localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
+        safeLocalStorageSet('pos_cloud_products', JSON.stringify(products));
+        safeLocalStorageSet('pos_cloud_transactions', JSON.stringify(transactions));
+        safeLocalStorageSet('pos_cloud_accounts', JSON.stringify(accounts));
+        safeLocalStorageSet('pos_cloud_transfers', JSON.stringify(cashTransfers));
+        safeLocalStorageSet('pos_cloud_expenses', JSON.stringify(expenses));
+        safeLocalStorageSet('pos_cloud_settings', JSON.stringify(settings));
     }
 }
 
@@ -228,20 +269,22 @@ async function loadFromCloudOrLocal(forceFromFirebase = false) {
                 settings = { ...DEFAULT_SETTINGS, ...(data.settings || {}) };
                 loadedFromFB = true;
 
-                localStorage.setItem('pos_cloud_products', JSON.stringify(products));
-                localStorage.setItem('pos_cloud_transactions', JSON.stringify(transactions));
-                localStorage.setItem('pos_cloud_accounts', JSON.stringify(accounts));
-                localStorage.setItem('pos_cloud_transfers', JSON.stringify(cashTransfers));
-                localStorage.setItem('pos_cloud_expenses', JSON.stringify(expenses));
-                localStorage.setItem('pos_cloud_settings', JSON.stringify(settings));
-            } else if (forceFromFirebase) {
+                safeLocalStorageSet('pos_cloud_products', JSON.stringify(products));
+                safeLocalStorageSet('pos_cloud_transactions', JSON.stringify(transactions));
+                safeLocalStorageSet('pos_cloud_accounts', JSON.stringify(accounts));
+                safeLocalStorageSet('pos_cloud_transfers', JSON.stringify(cashTransfers));
+                safeLocalStorageSet('pos_cloud_expenses', JSON.stringify(expenses));
+                safeLocalStorageSet('pos_cloud_settings', JSON.stringify(settings));
+            } else if (forceFromFirebase && typeof showToast === 'function') {
                 showToast('Dokumen pos_store/main_data belum ada di Firestore.', true);
             }
         } catch (e) {
-            console.error("Gagal mengambil data dari Firebase:", e);
-            showToast(`Gagal ambil data Firebase: ${e.code || e.message}`, true);
+            console.warn("Gagal mengambil data dari Firebase:", e);
+            if (typeof showToast === 'function') {
+                showToast(`Gagal ambil data Firebase: ${e.code || e.message}`, true);
+            }
         }
-    } else if (forceFromFirebase && (!auth || !auth.currentUser)) {
+    } else if (forceFromFirebase && (!auth || !auth.currentUser) && typeof showToast === 'function') {
         showToast('Data dimuat dari penyimpanan lokal.', false);
     }
 
@@ -249,7 +292,7 @@ async function loadFromCloudOrLocal(forceFromFirebase = false) {
         loadLocalFallback();
     }
 
-    syncCartWithProducts();
-    applySettingsToUI();
-    refreshActiveView();
+    if (typeof syncCartWithProducts === 'function') syncCartWithProducts();
+    if (typeof applySettingsToUI === 'function') applySettingsToUI();
+    if (typeof refreshActiveView === 'function') refreshActiveView();
 }
