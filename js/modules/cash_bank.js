@@ -4,11 +4,12 @@ function renderCashBankView() {
     const totalLiquidityEl = document.getElementById('cash-total-balance');
     if (!grid) return;
 
+    const accList = Array.isArray(accounts) ? accounts : [];
     let totalBalance = 0;
     grid.innerHTML = '';
 
-    accounts.forEach(acc => {
-        totalBalance += (acc.balance || 0);
+    accList.forEach(acc => {
+        totalBalance += (Number(acc.balance) || 0);
         const badgeColor = acc.type === 'bank'
             ? 'bg-blue-50 text-blue-600 border-blue-200'
             : acc.type === 'ewallet'
@@ -19,17 +20,29 @@ function renderCashBankView() {
             : acc.type === 'ewallet'
                 ? 'fa-qrcode'
                 : 'fa-wallet';
+        const isSystemAcc = ['ACC-CASH', 'ACC-BANK', 'ACC-QRIS'].includes(acc.id);
 
         grid.innerHTML += `
             <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-                <div class="flex items-start justify-between">
+                <div class="flex items-start justify-between gap-2">
                     <div>
                         <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${badgeColor}">${escapeHtml(acc.type)}</span>
                         <h4 class="font-bold text-slate-800 text-sm mt-2">${escapeHtml(acc.name)}</h4>
                         <p class="text-[11px] text-slate-400 font-mono">${escapeHtml(acc.accountNumber || '-')}</p>
                     </div>
-                    <div class="w-9 h-9 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
-                        <i class="fa-solid ${icon}"></i>
+                    <div class="flex items-center space-x-1 shrink-0">
+                        <button type="button" onclick="editAccount('${escapeHtml(acc.id)}')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 text-xs font-semibold transition" title="Edit Akun">
+                            <i class="fa-solid fa-pen"></i>
+                        </button>
+                        ${!isSystemAcc
+                            ? `<button type="button" onclick="deleteAccount('${escapeHtml(acc.id)}')" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 text-xs font-semibold transition" title="Hapus Akun">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>`
+                            : ''
+                        }
+                        <div class="w-8 h-8 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                            <i class="fa-solid ${icon} text-xs"></i>
+                        </div>
                     </div>
                 </div>
                 <div class="mt-4 pt-3 border-t border-slate-100">
@@ -45,15 +58,15 @@ function renderCashBankView() {
     const fromSelect = document.getElementById('tf-from-account');
     const toSelect = document.getElementById('tf-to-account');
     if (fromSelect && toSelect) {
-        const optionsHtml = accounts.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} (${formatRupiah(a.balance)})</option>`).join('');
+        const optionsHtml = accList.map(a => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)} (${formatRupiah(a.balance)})</option>`).join('');
         fromSelect.innerHTML = optionsHtml;
         toSelect.innerHTML = optionsHtml;
-        if (accounts.length > 1) toSelect.selectedIndex = 1;
+        if (accList.length > 1) toSelect.selectedIndex = 1;
     }
 
     if (transferBody) {
         transferBody.innerHTML = '';
-        const revTransfers = [...cashTransfers].reverse();
+        const revTransfers = [...(Array.isArray(cashTransfers) ? cashTransfers : [])].reverse();
         if (revTransfers.length === 0) {
             transferBody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-slate-400">Belum ada riwayat transfer antar-akun</td></tr>`;
         } else {
@@ -69,6 +82,64 @@ function renderCashBankView() {
                 `;
             });
         }
+    }
+}
+
+async function editAccount(accountId) {
+    const acc = accounts.find(a => a && a.id === accountId);
+    if (!acc) return;
+
+    const nextName = prompt('Nama Akun:', acc.name);
+    if (nextName === null) return;
+    const cleanName = nextName.trim();
+    if (!cleanName) {
+        showToast('Nama akun tidak boleh kosong!', true);
+        return;
+    }
+
+    const nextNumber = prompt('No. Rekening / Info:', acc.accountNumber || '-');
+    if (nextNumber === null) return;
+
+    const nextBalanceRaw = prompt('Saldo Akun (Rp):', String(Number(acc.balance) || 0));
+    if (nextBalanceRaw === null) return;
+    const nextBalance = parseFloat(nextBalanceRaw);
+    if (Number.isNaN(nextBalance) || nextBalance < 0) {
+        showToast('Saldo harus berupa angka valid (>= 0)!', true);
+        return;
+    }
+
+    try {
+        await mutateStoreDataAtomic((state) => {
+            const target = state.accounts.find(a => a && a.id === accountId);
+            if (!target) throw new Error('Akun tidak ditemukan.');
+            target.name = cleanName;
+            target.accountNumber = nextNumber.trim() || '-';
+            target.balance = nextBalance;
+        });
+        renderCashBankView();
+        showToast('Akun kas/bank berhasil diperbarui!');
+    } catch (err) {
+        showToast(err.message || 'Gagal mengedit akun!', true);
+    }
+}
+
+async function deleteAccount(accountId) {
+    const acc = accounts.find(a => a && a.id === accountId);
+    if (!acc) return;
+    if (['ACC-CASH', 'ACC-BANK', 'ACC-QRIS'].includes(accountId)) {
+        showToast('Akun utama sistem tidak dapat dihapus.', true);
+        return;
+    }
+    if (!confirm(`Hapus akun "${acc.name}"?`)) return;
+
+    try {
+        await mutateStoreDataAtomic((state) => {
+            state.accounts = state.accounts.filter(a => a && a.id !== accountId);
+        });
+        renderCashBankView();
+        showToast(`Akun "${acc.name}" berhasil dihapus.`);
+    } catch (err) {
+        showToast(err.message || 'Gagal menghapus akun!', true);
     }
 }
 
@@ -145,62 +216,5 @@ async function submitAccountTransfer(event) {
         showToast('Transfer antar-akun berhasil dicatat!');
     } catch (err) {
         showToast(err.message || 'Gagal melakukan transfer!', true);
-    }
-}
-async function editAccount(accountId) {
-    const acc = accounts.find(a => a.id === accountId);
-    if (!acc) return;
-
-    const nextName = prompt('Nama Akun:', acc.name);
-    if (nextName === null) return;
-    const cleanName = nextName.trim();
-    if (!cleanName) {
-        showToast('Nama akun tidak boleh kosong!', true);
-        return;
-    }
-
-    const nextNumber = prompt('No. Rekening / Info:', acc.accountNumber || '-');
-    if (nextNumber === null) return;
-
-    const nextBalanceRaw = prompt('Saldo Akun (Rp):', String(Number(acc.balance) || 0));
-    if (nextBalanceRaw === null) return;
-    const nextBalance = parseFloat(nextBalanceRaw);
-    if (Number.isNaN(nextBalance) || nextBalance < 0) {
-        showToast('Saldo harus berupa angka valid (>= 0)!', true);
-        return;
-    }
-
-    try {
-        await mutateStoreDataAtomic((state) => {
-            const target = state.accounts.find(a => a.id === accountId);
-            if (!target) throw new Error('Akun tidak ditemukan.');
-            target.name = cleanName;
-            target.accountNumber = nextNumber.trim() || '-';
-            target.balance = nextBalance;
-        });
-        renderCashBankView();
-        showToast('Akun kas/bank berhasil diperbarui!');
-    } catch (err) {
-        showToast(err.message || 'Gagal mengedit akun!', true);
-    }
-}
-
-async function deleteAccount(accountId) {
-    const acc = accounts.find(a => a.id === accountId);
-    if (!acc) return;
-    if (['ACC-CASH', 'ACC-BANK', 'ACC-QRIS'].includes(accountId)) {
-        showToast('Akun utama sistem tidak dapat dihapus.', true);
-        return;
-    }
-    if (!confirm(`Hapus akun "${acc.name}"?`)) return;
-
-    try {
-        await mutateStoreDataAtomic((state) => {
-            state.accounts = state.accounts.filter(a => a.id !== accountId);
-        });
-        renderCashBankView();
-        showToast(`Akun "${acc.name}" berhasil dihapus.`);
-    } catch (err) {
-        showToast(err.message || 'Gagal menghapus akun!', true);
     }
 }
