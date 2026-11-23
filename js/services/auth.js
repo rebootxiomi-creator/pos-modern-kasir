@@ -1,5 +1,3 @@
-let isOpeningMainApp = false;
-
 function resolveUserRole(email) {
     const cleanEmail = (email || '').trim().toLowerCase();
     if (typeof ACCOUNT_ROLES !== 'undefined' && ACCOUNT_ROLES[cleanEmail]) {
@@ -22,61 +20,40 @@ function resetLoginButton() {
 }
 
 async function openMainAppAfterAuth(userObj, isFromCloud = false) {
-    if (isOpeningMainApp) return;
-    isOpeningMainApp = true;
-
+    currentUser = userObj;
     try {
-        currentUser = userObj;
+        localStorage.setItem('pos_offline_session', JSON.stringify(currentUser));
+    } catch (e) {}
+
+    if (typeof hideLoginModal === 'function') hideLoginModal();
+    if (typeof applyRolePermissions === 'function') {
+        applyRolePermissions();
+    }
+
+    if (isFromCloud && typeof loadFromCloudOrLocal === 'function') {
         try {
-            localStorage.setItem('pos_offline_session', JSON.stringify(currentUser));
-        } catch (e) {}
-
-        if (typeof hideLoginModal === 'function') {
-            hideLoginModal();
+            await loadFromCloudOrLocal(true);
+        } catch (e) {
+            console.warn('Cloud load fallback to local:', e);
+            if (typeof loadLocalFallback === 'function') loadLocalFallback();
         }
-        if (typeof applyRolePermissions === 'function') {
-            applyRolePermissions();
+        if (typeof startRealtimeFirestoreListener === 'function') {
+            startRealtimeFirestoreListener();
         }
+    } else if (typeof loadLocalFallback === 'function') {
+        loadLocalFallback();
+    }
 
-        const targetTab = (currentUser && currentUser.role === 'admin') ? 'dashboard' : 'pos';
-        if (typeof switchTab === 'function') {
-            switchTab(targetTab);
-        }
-
-        if (isFromCloud && typeof loadFromCloudOrLocal === 'function') {
-            try {
-                await Promise.race([
-                    loadFromCloudOrLocal(true),
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout memuat data cloud')), 5000))
-                ]);
-            } catch (e) {
-                console.warn('Cloud load fallback to local:', e);
-                if (typeof loadLocalFallback === 'function') loadLocalFallback();
-                if (typeof refreshActiveView === 'function') refreshActiveView();
-            }
-
-            if (typeof startRealtimeFirestoreListener === 'function') {
-                try {
-                    startRealtimeFirestoreListener();
-                } catch (e) {
-                    console.warn('Realtime listener warning:', e);
-                }
-            }
-        } else if (typeof loadLocalFallback === 'function') {
-            loadLocalFallback();
-            if (typeof refreshActiveView === 'function') refreshActiveView();
-        }
-    } finally {
-        isOpeningMainApp = false;
+    const targetTab = (currentUser && currentUser.role === 'admin') ? 'dashboard' : 'pos';
+    if (typeof switchTab === 'function') {
+        switchTab(targetTab);
     }
 }
 
 function setupAuthStateListener() {
-    if (typeof auth === 'undefined' || !auth || typeof auth.onAuthStateChanged !== 'function') return;
+    if (!auth || typeof auth.onAuthStateChanged !== 'function') return;
     auth.onAuthStateChanged(async (user) => {
-        if (typeof isAuthInitialized !== 'undefined') {
-            window.isAuthInitialized = true;
-        }
+        isAuthInitialized = true;
         if (user) {
             const roleInfo = resolveUserRole(user.email);
             await openMainAppAfterAuth({
@@ -86,14 +63,14 @@ function setupAuthStateListener() {
                 name: roleInfo.name
             }, true);
         } else if (!currentUser) {
-            let savedSession = null;
+            let hasLocalSession = false;
             try {
-                savedSession = localStorage.getItem('pos_offline_session');
+                hasLocalSession = Boolean(localStorage.getItem('pos_offline_session'));
             } catch (e) {}
-            if (!savedSession && typeof showLoginModal === 'function') {
+            if (!hasLocalSession && typeof showLoginModal === 'function') {
                 showLoginModal();
-                resetLoginButton();
             }
+            resetLoginButton();
         }
     });
 }
@@ -191,6 +168,6 @@ async function logout() {
     const passEl = document.getElementById('login-password');
     if (passEl) passEl.value = '';
     resetLoginButton();
-    showLoginModal();
+    if (typeof showLoginModal === 'function') showLoginModal();
     showToast('Anda telah keluar dari sistem.');
 }
