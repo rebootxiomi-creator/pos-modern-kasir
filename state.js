@@ -26,3 +26,5 @@ let db = null;
 let isFirebaseConnected = false;
 let isAuthInitialized = false;
 let firestoreUnsubscribe = null;
+let accounts = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+let cashTransfers = [];
