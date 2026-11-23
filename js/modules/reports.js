@@ -1,20 +1,44 @@
+function getItemUnitCost(item) {
+    if (!item || typeof item !== 'object') return 0;
+
+    const directCost = Number(
+        item.buyPrice ?? item.costPrice ?? item.hpp ?? item.modal ?? 0
+    );
+    if (directCost > 0) return directCost;
+
+    if (item.id && Array.isArray(products)) {
+        const matchedProd = products.find(p => p && p.id === item.id);
+        if (matchedProd) {
+            return Number(
+                matchedProd.buyPrice ?? matchedProd.costPrice ?? matchedProd.hpp ?? matchedProd.modal ?? 0
+            ) || 0;
+        }
+    }
+
+    return 0;
+}
+
 function computeTransactionProfit(trx) {
     if (!trx || trx.status === 'VOID') return 0;
-    if (typeof trx.profit === 'number' && !Number.isNaN(trx.profit)) {
-        return trx.profit;
-    }
-    const cost = (trx.items || []).reduce(
-        (sum, it) => sum + ((Number(it.buyPrice) || 0) * (Number(it.qty) || 0)),
-        0
-    );
-    return (Number(trx.total) || 0) - cost;
+
+    const items = Array.isArray(trx.items) ? trx.items : [];
+    const totalCost = items.reduce((sum, it) => {
+        const qty = Number(it && it.qty) || 0;
+        return sum + (getItemUnitCost(it) * qty);
+    }, 0);
+
+    const netSales = Number(trx.total) || 0;
+    return netSales - totalCost;
 }
 
 function renderReportsView() {
     const prodList = Array.isArray(products) ? products : [];
     const trxList = Array.isArray(transactions) ? transactions : [];
 
-    const totalModal = prodList.reduce((sum, p) => sum + ((Number(p.buyPrice) || 0) * (Number(p.stock) || 0)), 0);
+    const totalModal = prodList.reduce((sum, p) => {
+        const unitModal = Number(p.buyPrice ?? p.costPrice ?? p.hpp ?? p.modal ?? 0) || 0;
+        return sum + (unitModal * (Number(p.stock) || 0));
+    }, 0);
     const totalPotential = prodList.reduce((sum, p) => sum + ((Number(p.sellPrice) || 0) * (Number(p.stock) || 0)), 0);
 
     const validTrx = trxList.filter(t => t && t.status !== 'VOID');
