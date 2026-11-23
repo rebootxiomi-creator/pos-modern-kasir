@@ -147,3 +147,60 @@ async function submitAccountTransfer(event) {
         showToast(err.message || 'Gagal melakukan transfer!', true);
     }
 }
+async function editAccount(accountId) {
+    const acc = accounts.find(a => a.id === accountId);
+    if (!acc) return;
+
+    const nextName = prompt('Nama Akun:', acc.name);
+    if (nextName === null) return;
+    const cleanName = nextName.trim();
+    if (!cleanName) {
+        showToast('Nama akun tidak boleh kosong!', true);
+        return;
+    }
+
+    const nextNumber = prompt('No. Rekening / Info:', acc.accountNumber || '-');
+    if (nextNumber === null) return;
+
+    const nextBalanceRaw = prompt('Saldo Akun (Rp):', String(Number(acc.balance) || 0));
+    if (nextBalanceRaw === null) return;
+    const nextBalance = parseFloat(nextBalanceRaw);
+    if (Number.isNaN(nextBalance) || nextBalance < 0) {
+        showToast('Saldo harus berupa angka valid (>= 0)!', true);
+        return;
+    }
+
+    try {
+        await mutateStoreDataAtomic((state) => {
+            const target = state.accounts.find(a => a.id === accountId);
+            if (!target) throw new Error('Akun tidak ditemukan.');
+            target.name = cleanName;
+            target.accountNumber = nextNumber.trim() || '-';
+            target.balance = nextBalance;
+        });
+        renderCashBankView();
+        showToast('Akun kas/bank berhasil diperbarui!');
+    } catch (err) {
+        showToast(err.message || 'Gagal mengedit akun!', true);
+    }
+}
+
+async function deleteAccount(accountId) {
+    const acc = accounts.find(a => a.id === accountId);
+    if (!acc) return;
+    if (['ACC-CASH', 'ACC-BANK', 'ACC-QRIS'].includes(accountId)) {
+        showToast('Akun utama sistem tidak dapat dihapus.', true);
+        return;
+    }
+    if (!confirm(`Hapus akun "${acc.name}"?`)) return;
+
+    try {
+        await mutateStoreDataAtomic((state) => {
+            state.accounts = state.accounts.filter(a => a.id !== accountId);
+        });
+        renderCashBankView();
+        showToast(`Akun "${acc.name}" berhasil dihapus.`);
+    } catch (err) {
+        showToast(err.message || 'Gagal menghapus akun!', true);
+    }
+}
