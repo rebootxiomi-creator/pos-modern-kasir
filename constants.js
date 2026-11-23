@@ -21,8 +21,20 @@ const ACCOUNT_ROLES = {
     "kasir1@abs.com": { role: "cashier1", name: "Kasir 1" },
     "kasir2@abs.com": { role: "cashier2", name: "Kasir 2" }
 };
+
 const DEFAULT_ACCOUNTS = [
     { id: "ACC-CASH", name: "Kas Tunai Kasir", type: "cash", accountNumber: "-", balance: 0 },
     { id: "ACC-BANK", name: "Rekening Bank Utama", type: "bank", accountNumber: "", balance: 0 },
     { id: "ACC-QRIS", name: "Saldo QRIS / E-Wallet", type: "ewallet", accountNumber: "-", balance: 0 }
+];
+
+const EXPENSE_CATEGORIES = [
+    "Ongkir / Ekspedisi",
+    "Bensin & Operasional Kurir",
+    "Bongkar Muat / Gudang",
+    "Gaji & Upah Karyawan",
+    "Listrik, Air & Internet",
+    "Kemasan & Lakban",
+    "Sewa Tempat",
+    "Lain-lain"
 ];
