@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     if (typeof startRealtimeClock === 'function') startRealtimeClock();
     if (typeof applySettingsToUI === 'function') applySettingsToUI();
 
@@ -8,7 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (rawSession) {
             restoredSession = JSON.parse(rawSession);
         }
-    } catch (e) {}
+    } catch (e) {
+        console.warn('Gagal membaca sesi lokal:', e);
+    }
 
     if (typeof initFirebaseFromStorage === 'function') {
         try {
@@ -18,9 +20,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    const hasFirebase = typeof isFirebaseConnected !== 'undefined' && Boolean(isFirebaseConnected);
+
     if (restoredSession && restoredSession.role && typeof openMainAppAfterAuth === 'function') {
-        openMainAppAfterAuth(restoredSession, false);
+        await openMainAppAfterAuth(restoredSession, hasFirebase);
     } else {
+        if (typeof loadLocalFallback === 'function') {
+            loadLocalFallback();
+        }
         if (typeof showLoginModal === 'function') showLoginModal();
         if (typeof resetLoginButton === 'function') resetLoginButton();
     }
