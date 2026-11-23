@@ -164,7 +164,7 @@ function syncCartWithProducts() {
         if (!prod || (Number(prod.stock) || 0) <= 0) return false;
         item.name = prod.name;
         item.price = Number(prod.sellPrice) || 0;
-        item.buyPrice = Number(prod.buyPrice) || 0;
+        item.buyPrice = Number(prod.buyPrice ?? prod.costPrice ?? prod.hpp ?? prod.modal ?? 0) || 0;
         if (item.qty > Number(prod.stock)) {
             item.qty = Number(prod.stock);
         }
@@ -183,6 +183,7 @@ function addToCart(productId) {
         return;
     }
 
+    const unitCost = Number(prod.buyPrice ?? prod.costPrice ?? prod.hpp ?? prod.modal ?? 0) || 0;
     const existing = cart.find(i => i.id === productId);
     if (existing) {
         if (existing.qty + 1 > maxStock) {
@@ -190,12 +191,13 @@ function addToCart(productId) {
             return;
         }
         existing.qty += 1;
+        existing.buyPrice = unitCost;
     } else {
         cart.push({
             id: prod.id,
             name: prod.name,
             price: Number(prod.sellPrice) || 0,
-            buyPrice: Number(prod.buyPrice) || 0,
+            buyPrice: unitCost,
             qty: 1
         });
     }
@@ -345,7 +347,8 @@ function closePaymentModal() {
 }
 
 function selectPaymentMethod(method) {
-    paymentMethod = method;
+    paymentMethod = method || 'cash';
+
     const cashBtn = document.getElementById('pm-cash-btn');
     const qrisBtn = document.getElementById('pm-qris-btn');
     const tfBtn = document.getElementById('pm-transfer-btn');
@@ -357,18 +360,18 @@ function selectPaymentMethod(method) {
     const activeCls = "py-2.5 px-2 rounded-xl border-2 border-indigo-600 bg-indigo-50 text-indigo-700 text-xs font-semibold flex items-center justify-center space-x-1.5 transition";
     const idleCls = "py-2.5 px-2 rounded-xl border-2 border-slate-200 bg-white text-slate-600 text-xs font-semibold flex items-center justify-center space-x-1.5 transition";
 
-    if (cashBtn) cashBtn.className = method === 'cash' ? activeCls : idleCls;
-    if (qrisBtn) qrisBtn.className = method === 'qris' ? activeCls : idleCls;
-    if (tfBtn) tfBtn.className = method === 'transfer' ? activeCls : idleCls;
+    if (cashBtn) cashBtn.className = paymentMethod === 'cash' ? activeCls : idleCls;
+    if (qrisBtn) qrisBtn.className = paymentMethod === 'qris' ? activeCls : idleCls;
+    if (tfBtn) tfBtn.className = paymentMethod === 'transfer' ? activeCls : idleCls;
 
-    if (cashSec) cashSec.classList.toggle('hidden', method !== 'cash');
-    if (qrisSec) qrisSec.classList.toggle('hidden', method !== 'qris');
-    if (tfSec) tfSec.classList.toggle('hidden', method !== 'transfer');
+    if (cashSec) cashSec.classList.toggle('hidden', paymentMethod !== 'cash');
+    if (qrisSec) qrisSec.classList.toggle('hidden', paymentMethod !== 'qris');
+    if (tfSec) tfSec.classList.toggle('hidden', paymentMethod !== 'transfer');
 
     const { total } = getCartTotals();
-    if (method === 'qris') {
+    if (paymentMethod === 'qris') {
         renderQrisBox(total);
-    } else if (method === 'transfer') {
+    } else if (paymentMethod === 'transfer') {
         const bankAcc = Array.isArray(accounts)
             ? accounts.find(a => a && (a.id === 'ACC-BANK' || a.type === 'bank'))
             : null;
@@ -487,7 +490,12 @@ async function processCheckoutFinal() {
                     throw new Error(`Stok "${prod.name}" tidak mencukupi (tersisa ${currentStock}).`);
                 }
                 prod.stock = currentStock - qty;
-                totalCost += (Number(item.buyPrice) || 0) * qty;
+                const unitCost = Number(
+                    item.buyPrice ?? item.costPrice ?? item.hpp ?? item.modal ??
+                    prod.buyPrice ?? prod.costPrice ?? prod.hpp ?? prod.modal ?? 0
+                ) || 0;
+                item.buyPrice = unitCost;
+                totalCost += unitCost * qty;
             }
 
             const profit = total - totalCost;
